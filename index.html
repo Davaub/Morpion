@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ed">
+  <title>Morpion — À vous de jouer</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #20344a; background: #f5f3ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; min-height: 100svh; display: grid; place-items: center; padding: 28px 16px; }
+    main { width: min(100%, 460px); }
+    .eyebrow { font-size: .72rem; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; }
+    header { margin-bottom: 26px; }
+    h1 { margin: 8px 0; font-size: clamp(2.8rem, 11vw, 4rem); letter-spacing: -.06em; line-height: 1.1; }
+    .intro { margin: 12px 0 0; color: #5d6975; line-height: 1.6; }
+    .players { display: flex; gap: 10px; margin-bottom: 20px; }
+    .player { flex: 1; display: flex; align-items: center; gap: 10px; border: 1px solid #d7dbde; border-radius: 12px; padding: 12px 16px; font-size: .9rem; }
+    .player strong { font-size: 1.4rem; }
+    .player.active { background: #20344a; color: white; border-color: #20344a; }
+    .player:last-child.active { background: #a64432; border-color: #a64432; }
+    .panel { padding: 22px; background: #fffefb; border: 1px solid #e1e0da; border-radius: 24px; box-shadow: 0 16px 45px #20344a09; }
+    #status { margin: 0 0 18px; min-height: 1.6em; font-size: 1.15rem; font-weight: 700; text-align: center; }
+    .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+    .cell { position: relative; aspect-ratio: 1; border: 1px solid #e0e3e5; border-radius: 12px; background: #f4f5f4; color: #20344a; font: 700 clamp(2.2rem, 12vw, 3.5rem)/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation; }
+    .cell::before { content: attr(data-number); position: absolute; top: 9px; left: 11px; font: 500 .7rem/1 system-ui, sans-serif; color: #6b7680; }
+    .cell[data-symbol="O"] { color: #a64432; }
+    .cell:enabled:hover { background: #e8ecee; border-color: #9caab6; }
+    .cell:disabled { cursor: default; opacity: 1; }
+    .cell.winner { background: #f9df80; border-color: #dbba51; }
+    button:focus-visible { outline: 3px solid #3378b9; outline-offset: 4px; }
+    #restart { margin-top: 20px; width: 100%; min-height: 48px; padding: 12px; border: 0; border-radius: 12px; background: #20344a; color: white; font: 650 .95rem system-ui, sans-serif; cursor: pointer; }
+    #restart:hover { background: #304d6a; }
+    footer { margin: 20px 8px 0; color: #5d6975; text-align: center; font-size: .8rem; line-height: 1.7; }
+    @media (max-width: 360px) { .panel { padding: 14px; } .player { padding: 10px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <span class="eyebrow">Le classique à deux</span>
+      <h1>Morpion<span style="color:#a64432">.</span></h1>
+      <p class="intro">Un écran, deux joueurs. Alignez trois symboles<br>et remportez la partie.</p>
+    </header>
+    <div class="players" aria-label="Les deux joueurs">
+      <div class="player active" id="player-x"><strong>X</strong> Joueur X</div>
+      <div class="player" id="player-o"><strong>O</strong> Joueur O</div>
+    </div>
+    <section class="panel" aria-label="Partie de morpion">
+      <p id="status" role="status" aria-live="polite" aria-atomic="true">À X de jouer</p>
+      <div class="board" role="group" aria-label="Grille de 3 lignes et 3 colonnes, cases numérotées de 1 à 9">
+        <button type="button" class="cell" data-number="1" aria-label="Case 1, vide"></button>
+        <button type="button" class="cell" data-number="2" aria-label="Case 2, vide"></button>
+        <button type="button" class="cell" data-number="3" aria-label="Case 3, vide"></button>
+        <button type="button" class="cell" data-number="4" aria-label="Case 4, vide"></button>
+        <button type="button" class="cell" data-number="5" aria-label="Case 5, vide"></button>
+        <button type="button" class="cell" data-number="6" aria-label="Case 6, vide"></button>
+        <button type="button" class="cell" data-number="7" aria-label="Case 7, vide"></button>
+        <button type="button" class="cell" data-number="8" aria-label="Case 8, vide"></button>
+        <button type="button" class="cell" data-number="9" aria-label="Case 9, vide"></button>
+      </div>
+      <button type="button" id="restart">Nouvelle partie</button>
+    </section>
+    <footer>X commence · Trois symboles alignés pour gagner<br>Jouez à la souris, au toucher ou avec Tab puis Entrée.</footer>
+  </main>
+  <script>
+    'use strict';
+    const cells = Array.from(document.querySelectorAll('.cell'));
+    const status = document.getElementById('status');
+    const playerX = document.getElementById('player-x');
+    const playerO = document.getElementById('player-o');
+    const winningLines = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+    let board;
+    let currentPlayer;
+    let finished;
+
+    function render(winningLine = []) {
+      cells.forEach((cell, index) => {
+        cell.textContent = board[index];
+        cell.dataset.symbol = board[index];
+        cell.disabled = finished || board[index] !== '';
+        cell.setAttribute('aria-label', `Case ${index + 1}, ${board[index] || 'vide'}`);
+        cell.classList.toggle('winner', winningLine.includes(index));
+      });
+      playerX.classList.toggle('active', !finished && currentPlayer === 'X');
+      playerO.classList.toggle('active', !finished && currentPlayer === 'O');
+    }
+
+    function play(index) {
+      // Vérifier avant toute modification : un coup refusé ne passe pas le tour.
+      if (finished || board[index] !== '') return;
+      board[index] = currentPlayer;
+      const winningLine = winningLines.find(line =>
+        line.every(position => board[position] === currentPlayer)
+      );
+      if (winningLine) {
+        finished = true;
+        status.textContent = `${currentPlayer} a gagné !`;
+      } else if (board.every(symbol => symbol !== '')) {
+        finished = true;
+        status.textContent = 'Match nul !';
+      } else {
+        currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        status.textContent = `À ${currentPlayer} de jouer`;
+      }
+      render(winningLine);
+    }
+
+    function newGame() {
+      board = Array(9).fill('');
+      currentPlayer = 'X';
+      finished = false;
+      status.textContent = 'À X de jouer';
+      render();
+    }
+
+    cells.forEach((cell, index) => cell.addEventListener('click', () => play(index)));
+    document.getElementById('restart').addEventListener('click', newGame);
+    newGame();
+  </script>
+</body>
+</html>
+
